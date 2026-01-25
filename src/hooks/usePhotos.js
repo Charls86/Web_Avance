@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { ref, getDownloadURL, listAll } from 'firebase/storage';
-import { storage } from '../services/firebase';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -57,16 +55,55 @@ export function usePhotos() {
     }
   };
 
-  // Download single photo
-  const downloadPhoto = async (url, filename) => {
+  // Download single photo - opens in new tab to avoid CORS
+  const downloadPhoto = (url, filename) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.download = filename || getFilenameFromUrl(url);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Fetch image with CORS workaround
+  const fetchImageAsBlob = async (url) => {
     try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      saveAs(blob, filename || getFilenameFromUrl(url));
-    } catch (err) {
-      console.error('Error downloading photo:', err);
-      throw err;
+      // Try direct fetch first
+      const response = await fetch(url, { mode: 'cors' });
+      if (response.ok) {
+        return await response.blob();
+      }
+    } catch {
+      // If CORS fails, try with no-cors (will get opaque response)
     }
+
+    // Fallback: use image element to load and convert to blob
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to create blob'));
+          }
+        }, 'image/jpeg', 0.95);
+      };
+
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+
+      img.src = url;
+    });
   };
 
   // Download multiple photos as ZIP
@@ -80,33 +117,42 @@ export function usePhotos() {
       const zip = new JSZip();
       const total = photos.length;
       let completed = 0;
+      let successCount = 0;
 
       for (const photo of photos) {
-        try {
-          const url = typeof photo === 'string' ? photo : photo.url;
-          const response = await fetch(url);
-          const blob = await response.blob();
+        const photoUrl = typeof photo === 'string' ? photo : photo.url;
 
-          let filename = getFilenameFromUrl(url);
+        try {
+          const blob = await fetchImageAsBlob(photoUrl);
+
+          let filename = getFilenameFromUrl(photoUrl);
 
           // If photo has cliente info, prefix with cliente name
           if (typeof photo === 'object' && photo.clienteName) {
-            filename = `${photo.clienteName}_${filename}`;
+            // Clean filename
+            const cleanName = photo.clienteName.replace(/[^a-zA-Z0-9]/g, '_');
+            filename = `${cleanName}_${filename}`;
           }
 
           zip.file(filename, blob);
-          completed++;
-          setProgress(Math.round((completed / total) * 100));
+          successCount++;
         } catch (err) {
-          console.error('Error downloading photo:', url, err);
+          console.warn('Could not download photo:', photoUrl, err.message);
         }
+
+        completed++;
+        setProgress(Math.round((completed / total) * 100));
       }
 
-      const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, zipName);
+      if (successCount > 0) {
+        const content = await zip.generateAsync({ type: 'blob' });
+        saveAs(content, zipName);
+      } else {
+        alert('No se pudieron descargar las fotos. Intente descargarlas individualmente.');
+      }
     } catch (err) {
       console.error('Error creating ZIP:', err);
-      throw err;
+      alert('Error al crear el archivo ZIP');
     } finally {
       setDownloading(false);
       setProgress(0);
