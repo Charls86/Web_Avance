@@ -202,7 +202,46 @@ function App() {
           <div className="h-full flex flex-col gap-4">
             {/* Stats */}
             <div className="flex-shrink-0">
-              <StatsCards stats={stats} />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Stats Cards inline */}
+                <div className="bg-white rounded-lg border border-green-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Ingresos Hoy</p>
+                      <p className="text-3xl font-bold mt-1 text-green-600">{stats.today.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-blue-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Últimos 7 días</p>
+                      <p className="text-3xl font-bold mt-1 text-blue-600">{stats.week.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-[#156082]/20 p-5 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Total Registros</p>
+                      <p className="text-3xl font-bold mt-1 text-[#156082]">{stats.total.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Refresh Button Card */}
+                <button
+                  onClick={refetch}
+                  className="bg-gradient-to-br from-[#156082]/5 to-[#156082]/10 rounded-lg border border-[#156082]/20 p-5 shadow-sm hover:shadow-md hover:border-[#156082]/40 transition-all flex flex-col items-center justify-center gap-2 group"
+                >
+                  <div className="p-3 bg-[#156082]/10 rounded-full group-hover:bg-[#156082]/20 transition-colors">
+                    <RefreshCw className="h-6 w-6 text-[#156082]" />
+                  </div>
+                  <span className="text-sm font-medium text-[#156082]">Actualizar</span>
+                </button>
+              </div>
             </div>
 
             {/* Map and Sidebar - fills remaining space */}
