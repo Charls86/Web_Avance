@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export function useClientes() {
@@ -11,14 +11,38 @@ export function useClientes() {
     try {
       setLoading(true);
       const clientesRef = collection(db, 'clientes');
-      const q = query(clientesRef, orderBy('fechaRegistro', 'desc'));
-      const snapshot = await getDocs(q);
+      // Get all documents without orderBy to include docs without fechaRegistro
+      const snapshot = await getDocs(clientesRef);
 
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        fechaRegistro: doc.data().fechaRegistro?.toDate?.() || doc.data().fechaRegistro
-      }));
+      const data = snapshot.docs.map(doc => {
+        const docData = doc.data();
+        let fechaRegistro = docData.fechaRegistro;
+
+        // Handle different date formats
+        if (fechaRegistro?.toDate) {
+          fechaRegistro = fechaRegistro.toDate();
+        } else if (fechaRegistro && typeof fechaRegistro === 'string') {
+          fechaRegistro = new Date(fechaRegistro);
+        }
+
+        return {
+          id: doc.id,
+          ...docData,
+          fechaRegistro
+        };
+      });
+
+      // Sort by fechaRegistro descending (nulls at the end)
+      data.sort((a, b) => {
+        if (!a.fechaRegistro && !b.fechaRegistro) return 0;
+        if (!a.fechaRegistro) return 1;
+        if (!b.fechaRegistro) return -1;
+        return new Date(b.fechaRegistro) - new Date(a.fechaRegistro);
+      });
+
+      console.log('Total clientes cargados:', data.length);
+      console.log('Buscando 5769714:', data.find(c => c.numeroCliente === '5769714' || c.numeroCliente === 5769714 || c.id === '5769714'));
+      console.log('Primeros 5 numeroCliente:', data.slice(0, 5).map(c => c.numeroCliente));
 
       setClientes(data);
       setError(null);
