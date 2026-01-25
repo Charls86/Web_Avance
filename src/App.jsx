@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight } from 'lucide-react';
 
 // Hooks
 import { useClientes } from './hooks/useClientes';
+import { useAuth } from './hooks/useAuth';
 
 // Utils
 import { getDateStats } from './utils/dateHelpers';
@@ -13,13 +14,63 @@ import MiniMap from './components/Dashboard/MiniMap';
 import ClientTable from './components/DataTable/ClientTable';
 import ExcelExport from './components/DataTable/ExcelExport';
 import ClientDetail from './components/ClientSearch/ClientDetail';
+import AvisosImport from './components/Avisos/AvisosImport';
+import Login from './components/Auth/Login';
+
+const AVISOS_PASSWORD = 'Ges_avi*';
+const AVISOS_AUTH_KEY = 'avisos_authorized';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedCliente, setSelectedCliente] = useState(null);
+  const [showAvisosAuth, setShowAvisosAuth] = useState(false);
+  const [avisosPassword, setAvisosPassword] = useState('');
+  const [avisosAuthError, setAvisosAuthError] = useState('');
+  const [avisosAuthorized, setAvisosAuthorized] = useState(() => {
+    return localStorage.getItem(AVISOS_AUTH_KEY) === 'true';
+  });
 
+  const { user, loading: authLoading, error: authError, login, logout } = useAuth();
   const { clientes, loading, error, refetch } = useClientes();
   const stats = getDateStats(clientes);
+
+  const handleAvisosClick = () => {
+    if (avisosAuthorized) {
+      setActiveTab('avisos');
+    } else {
+      setShowAvisosAuth(true);
+      setAvisosPassword('');
+      setAvisosAuthError('');
+    }
+  };
+
+  const handleAvisosAuth = () => {
+    if (avisosPassword === AVISOS_PASSWORD) {
+      localStorage.setItem(AVISOS_AUTH_KEY, 'true');
+      setAvisosAuthorized(true);
+      setShowAvisosAuth(false);
+      setActiveTab('avisos');
+    } else {
+      setAvisosAuthError('Contraseña incorrecta');
+    }
+  };
+
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-[#156082] animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600">Verificando sesión...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated - show login
+  if (!user) {
+    return <Login onLogin={login} error={authError} loading={authLoading} />;
+  }
 
   // Loading state
   if (loading) {
@@ -74,33 +125,72 @@ function App() {
             </div>
 
             {/* Navigation Tabs */}
-            <div className="flex bg-white/10 rounded-xl p-1">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm
-                  ${activeTab === 'dashboard'
-                    ? 'bg-white text-[#156082] shadow-lg'
-                    : 'text-white/80 hover:text-white hover:bg-white/10'
-                  }
-                `}
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveTab('clientes')}
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm
-                  ${activeTab === 'clientes'
-                    ? 'bg-white text-[#156082] shadow-lg'
-                    : 'text-white/80 hover:text-white hover:bg-white/10'
-                  }
-                `}
-              >
-                <Users className="h-4 w-4" />
-                Clientes
-              </button>
+            <div className="flex items-center gap-3">
+              <div className="flex bg-white/10 rounded-xl p-1">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm
+                    ${activeTab === 'dashboard'
+                      ? 'bg-white text-[#156082] shadow-lg'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }
+                  `}
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setActiveTab('clientes')}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm
+                    ${activeTab === 'clientes'
+                      ? 'bg-white text-[#156082] shadow-lg'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }
+                  `}
+                >
+                  <Users className="h-4 w-4" />
+                  Clientes
+                </button>
+                <button
+                  onClick={handleAvisosClick}
+                  className={`
+                    flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm
+                    ${activeTab === 'avisos'
+                      ? 'bg-white text-[#156082] shadow-lg'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }
+                  `}
+                >
+                  <Bell className="h-4 w-4" />
+                  Avisos
+                </button>
+              </div>
+
+              {/* User info & Logout */}
+              <div className="hidden sm:flex items-center gap-2">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full">
+                  <div className="relative">
+                    <div className="w-7 h-7 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-xs font-semibold text-white uppercase">
+                        {user.email.split('@')[0].charAt(0)}
+                      </span>
+                    </div>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#156082]"></span>
+                  </div>
+                  <span className="text-sm text-white/90">
+                    {user.email.split('@')[0]}
+                  </span>
+                </div>
+                <button
+                  onClick={logout}
+                  className="p-1.5 text-white/60 hover:text-white/90 transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -142,21 +232,38 @@ function App() {
               {/* Sidebar - takes 1/3 */}
               <div className="flex flex-col gap-3 min-h-0">
                 {/* Quick Actions */}
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex-shrink-0">
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
-                    Acciones Rápidas
-                  </h3>
-                  <div className="space-y-2">
-                    <ExcelExport clientes={clientes} />
-
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 flex-shrink-0">
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => setActiveTab('clientes')}
-                      className="w-full px-3 py-2 text-sm border border-gray-300
-                                 rounded-lg hover:bg-gray-50 transition-colors
-                                 text-left font-medium text-gray-700"
+                      className="flex flex-col items-center gap-2 p-4 rounded-xl bg-[#156082]/5 hover:bg-[#156082]/10 transition-colors group"
                     >
-                      Ver todos los clientes ({clientes.length})
+                      <div className="p-2 bg-[#156082]/10 rounded-lg group-hover:bg-[#156082]/20 transition-colors">
+                        <Users className="h-5 w-5 text-[#156082]" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-gray-900">Clientes</p>
+                        <p className="text-xs text-gray-500">{clientes.length}</p>
+                      </div>
                     </button>
+
+                    <div
+                      onClick={() => {
+                        if (clientes.length > 0) {
+                          const { exportToExcel } = require('./utils/excelFormatter');
+                          exportToExcel(clientes);
+                        }
+                      }}
+                      className="flex flex-col items-center gap-2 p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors group cursor-pointer"
+                    >
+                      <div className="p-2 bg-green-100 rounded-lg group-hover:bg-green-200 transition-colors">
+                        <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-gray-900">Exportar</p>
+                        <p className="text-xs text-gray-500">Excel</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -218,6 +325,10 @@ function App() {
             />
           </div>
         )}
+
+        {activeTab === 'avisos' && (
+          <AvisosImport />
+        )}
       </main>
 
       {/* Client Detail Modal */}
@@ -226,6 +337,54 @@ function App() {
           cliente={selectedCliente}
           onClose={() => setSelectedCliente(null)}
         />
+      )}
+
+      {/* Avisos Password Modal */}
+      {showAvisosAuth && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Bell className="h-6 w-6 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Acceso a Avisos</h3>
+              <p className="text-sm text-gray-500 mt-1">Ingresa la contraseña para continuar</p>
+            </div>
+
+            <input
+              type="password"
+              value={avisosPassword}
+              onChange={(e) => setAvisosPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAvisosAuth()}
+              placeholder="Contraseña"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
+                       focus:ring-2 focus:ring-[#156082] focus:border-[#156082]
+                       outline-none transition-all mb-3"
+              autoFocus
+            />
+
+            {avisosAuthError && (
+              <p className="text-sm text-red-500 mb-3 text-center">{avisosAuthError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAvisosAuth(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700
+                         hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAvisosAuth}
+                className="flex-1 px-4 py-2 bg-[#156082] text-white rounded-lg
+                         hover:bg-[#0d4a66] transition-colors font-medium"
+              >
+                Ingresar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

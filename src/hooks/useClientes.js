@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
+// Normalizar numeroCliente a 12 dígitos con ceros a la izquierda
+const normalizarNumeroCliente = (numero) => {
+  if (!numero) return '';
+  return numero.toString().replace(/\D/g, '').padStart(12, '0');
+};
+
 export function useClientes() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -10,11 +16,24 @@ export function useClientes() {
   const fetchClientes = async () => {
     try {
       setLoading(true);
-      const clientesRef = collection(db, 'clientes');
-      // Get all documents without orderBy to include docs without fechaRegistro
-      const snapshot = await getDocs(clientesRef);
 
-      const data = snapshot.docs.map(doc => {
+      // Cargar clientes y avisos en paralelo
+      const [clientesSnapshot, avisosSnapshot] = await Promise.all([
+        getDocs(collection(db, 'clientes')),
+        getDocs(collection(db, 'avisos'))
+      ]);
+
+      // Crear mapa de avisos para búsqueda rápida
+      const avisosMap = {};
+      avisosSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        // El ID del documento es el numeroCliente normalizado
+        avisosMap[doc.id] = data.aviso;
+      });
+
+      console.log('Avisos cargados:', Object.keys(avisosMap).length);
+
+      const data = clientesSnapshot.docs.map(doc => {
         const docData = doc.data();
         let fechaRegistro = docData.fechaRegistro;
 
@@ -25,10 +44,16 @@ export function useClientes() {
           fechaRegistro = new Date(fechaRegistro);
         }
 
+        // Buscar aviso actualizado en la colección avisos
+        const numeroNormalizado = normalizarNumeroCliente(docData.numeroCliente);
+        const avisoActualizado = avisosMap[numeroNormalizado];
+
         return {
           id: doc.id,
           ...docData,
-          fechaRegistro
+          fechaRegistro,
+          // Prioridad: aviso de colección 'avisos' > aviso del registro
+          aviso: avisoActualizado || docData.aviso || ''
         };
       });
 
@@ -41,8 +66,6 @@ export function useClientes() {
       });
 
       console.log('Total clientes cargados:', data.length);
-      console.log('Buscando 5769714:', data.find(c => c.numeroCliente === '5769714' || c.numeroCliente === 5769714 || c.id === '5769714'));
-      console.log('Primeros 5 numeroCliente:', data.slice(0, 5).map(c => c.numeroCliente));
 
       setClientes(data);
       setError(null);
@@ -82,10 +105,24 @@ export function useClienteById(id) {
 
         if (docSnap.exists()) {
           const data = docSnap.data();
+
+          // Buscar aviso actualizado en la colección avisos
+          let avisoActualizado = null;
+          if (data.numeroCliente) {
+            const numeroNormalizado = normalizarNumeroCliente(data.numeroCliente);
+            const avisoRef = doc(db, 'avisos', numeroNormalizado);
+            const avisoSnap = await getDoc(avisoRef);
+            if (avisoSnap.exists()) {
+              avisoActualizado = avisoSnap.data().aviso;
+            }
+          }
+
           setCliente({
             id: docSnap.id,
             ...data,
-            fechaRegistro: data.fechaRegistro?.toDate?.() || data.fechaRegistro
+            fechaRegistro: data.fechaRegistro?.toDate?.() || data.fechaRegistro,
+            // Prioridad: aviso de colección 'avisos' > aviso del registro
+            aviso: avisoActualizado || data.aviso || ''
           });
         } else {
           setCliente(null);
