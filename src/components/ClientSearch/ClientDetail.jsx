@@ -1,4 +1,4 @@
-import { X, Download, User, MapPin, Phone, Mail, Calendar, FileText } from 'lucide-react';
+import { X, Download, User, MapPin, Phone, Calendar, FileText, Eye, Image } from 'lucide-react';
 import { formatDate } from '../../utils/dateHelpers';
 import { usePhotos } from '../../hooks/usePhotos';
 
@@ -77,6 +77,10 @@ export default function ClientDetail({ cliente, onClose }) {
     await downloadPhotosAsZip(photosWithInfo, `fotos_${cliente.numeroCliente || cliente.id}.zip`);
   };
 
+  const openPhoto = (url) => {
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -106,9 +110,12 @@ export default function ClientDetail({ cliente, onClose }) {
           {photos.length > 0 && (
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Fotografías ({photos.length})
-                </h3>
+                <div className="flex items-center gap-2">
+                  <Image className="h-5 w-5 text-[#156082]" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Fotografías ({photos.length})
+                  </h3>
+                </div>
                 <button
                   onClick={handleDownloadAllPhotos}
                   className="inline-flex items-center gap-2 px-3 py-1.5 text-sm
@@ -120,25 +127,26 @@ export default function ClientDetail({ cliente, onClose }) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="flex flex-wrap gap-3">
                 {photos.map((url, index) => (
-                  <div key={index} className="relative group">
-                    <img
-                      src={url}
-                      alt={`Foto ${index + 1}`}
-                      className="w-full h-40 object-cover rounded-lg border border-gray-200"
-                    />
+                  <div key={index} className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-3">
+                    <span className="text-sm font-medium text-gray-700">
+                      Foto {index + 1}
+                    </span>
+                    <button
+                      onClick={() => openPhoto(url)}
+                      className="p-2 bg-[#156082] text-white rounded-lg hover:bg-[#0d4a66] transition-colors"
+                      title="Ver foto"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
                     <button
                       onClick={() => downloadPhoto(url)}
-                      className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-lg
-                                 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity
-                                 hover:bg-white"
+                      className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      title="Descargar foto"
                     >
-                      <Download className="h-4 w-4 text-gray-700" />
+                      <Download className="h-4 w-4" />
                     </button>
-                    <p className="mt-1 text-xs text-gray-500 truncate">
-                      {getFilenameFromUrl(url)}
-                    </p>
                   </div>
                 ))}
               </div>
