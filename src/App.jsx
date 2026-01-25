@@ -7,6 +7,7 @@ import { useAuth } from './hooks/useAuth';
 
 // Utils
 import { getDateStats } from './utils/dateHelpers';
+import { exportToExcel } from './utils/excelFormatter';
 
 // Components
 import StatsCards from './components/Dashboard/StatsCards';
@@ -289,7 +290,6 @@ function App() {
                     <div
                       onClick={() => {
                         if (clientes.length > 0) {
-                          const { exportToExcel } = require('./utils/excelFormatter');
                           exportToExcel(clientes);
                         }
                       }}
