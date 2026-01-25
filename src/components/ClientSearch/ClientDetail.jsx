@@ -3,7 +3,7 @@ import { formatDate } from '../../utils/dateHelpers';
 import { usePhotos } from '../../hooks/usePhotos';
 
 export default function ClientDetail({ cliente, onClose }) {
-  const { getClientePhotos, downloadPhoto, downloadPhotosAsZip, getFilenameFromUrl } = usePhotos();
+  const { getClientePhotos, downloadPhoto } = usePhotos();
 
   if (!cliente) return null;
 
@@ -68,15 +68,6 @@ export default function ClientDetail({ cliente, onClose }) {
     },
   ];
 
-  const handleDownloadAllPhotos = async () => {
-    if (photos.length === 0) return;
-    const photosWithInfo = photos.map(url => ({
-      url,
-      clienteName: cliente.nombre || cliente.numeroCliente || cliente.id
-    }));
-    await downloadPhotosAsZip(photosWithInfo, `fotos_${cliente.numeroCliente || cliente.id}.zip`);
-  };
-
   const openPhoto = (url) => {
     window.open(url, '_blank');
   };
@@ -109,22 +100,11 @@ export default function ClientDetail({ cliente, onClose }) {
           {/* Photos Section */}
           {photos.length > 0 && (
             <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Image className="h-5 w-5 text-[#156082]" />
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Fotografías ({photos.length})
-                  </h3>
-                </div>
-                <button
-                  onClick={handleDownloadAllPhotos}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm
-                             bg-green-600 text-white rounded-lg hover:bg-green-700
-                             transition-colors"
-                >
-                  <Download className="h-4 w-4" />
-                  Descargar Todas
-                </button>
+              <div className="flex items-center gap-2 mb-4">
+                <Image className="h-5 w-5 text-[#156082]" />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Fotografías ({photos.length})
+                </h3>
               </div>
 
               <div className="flex flex-wrap gap-3">
