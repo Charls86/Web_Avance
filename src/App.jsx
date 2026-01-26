@@ -33,6 +33,7 @@ function App() {
 
   const { user, loading: authLoading, error: authError, login, logout } = useAuth();
   const { clientes, loading, error, refetch } = useClientes();
+  const [refreshing, setRefreshing] = useState(false);
   const stats = getDateStats(clientes);
 
   const handleAvisosClick = () => {
@@ -53,6 +54,16 @@ function App() {
       setActiveTab('avisos');
     } else {
       setAvisosAuthError('Contraseña incorrecta');
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -96,12 +107,12 @@ function App() {
           </h2>
           <p className="mt-2 text-gray-600">{error}</p>
           <button
-            onClick={refetch}
+            onClick={handleRefresh}
             className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#156082]
                        text-white rounded-lg hover:bg-[#0d4a66] transition-colors"
           >
-            <RefreshCw className="h-4 w-4" />
-            Reintentar
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Actualizando...' : 'Reintentar'}
           </button>
         </div>
       </div>
@@ -234,13 +245,16 @@ function App() {
 
                 {/* Refresh Button Card */}
                 <button
-                  onClick={refetch}
-                  className="bg-gradient-to-br from-[#156082]/5 to-[#156082]/10 rounded-lg border border-[#156082]/20 p-5 shadow-sm hover:shadow-md hover:border-[#156082]/40 transition-all flex flex-col items-center justify-center gap-2 group"
+                  onClick={handleRefresh}
+                  className={`bg-gradient-to-br from-[#156082]/5 to-[#156082]/10 rounded-lg border border-[#156082]/20 p-5 shadow-sm hover:shadow-md hover:border-[#156082]/40 transition-all flex flex-col items-center justify-center gap-2 group ${refreshing ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  disabled={refreshing}
                 >
                   <div className="p-3 bg-[#156082]/10 rounded-full group-hover:bg-[#156082]/20 transition-colors">
-                    <RefreshCw className="h-6 w-6 text-[#156082]" />
+                    <RefreshCw className={`h-6 w-6 text-[#156082] ${refreshing ? 'animate-spin' : ''}`} />
                   </div>
-                  <span className="text-sm font-medium text-[#156082]">Actualizar</span>
+                  <span className="text-sm font-medium text-[#156082]">
+                    {refreshing ? 'Actualizando...' : 'Actualizar'}
+                  </span>
                 </button>
               </div>
             </div>

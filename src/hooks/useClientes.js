@@ -12,6 +12,8 @@ const normalizarNumeroCliente = (numero) => {
 const LAST_SYNC_KEY = 'clientes_last_sync';
 const LAST_FULL_SYNC_KEY = 'clientes_last_full_sync';
 const FULL_SYNC_INTERVAL_HOURS = 24; // Sincronización completa cada 24 horas
+const SYNC_VERSION_KEY = 'clientes_sync_version';
+const SYNC_VERSION = '2';
 
 export function useClientes() {
   const [clientes, setClientes] = useState([]);
@@ -61,6 +63,12 @@ export function useClientes() {
       setLoading(true);
       console.log('Carga inicial...');
 
+      const syncVersion = localStorage.getItem(SYNC_VERSION_KEY);
+      if (syncVersion !== SYNC_VERSION) {
+        localStorage.removeItem(LAST_SYNC_KEY);
+        localStorage.setItem(SYNC_VERSION_KEY, SYNC_VERSION);
+      }
+
       // Intentar cargar desde caché primero (SIN COSTO)
       let loadedFromCache = false;
       try {
@@ -71,7 +79,7 @@ export function useClientes() {
 
         if (clientesCacheSnap.docs.length > 0) {
           loadedFromCache = true;
-          console.log(`✓ Caché encontrado: ${clientesCacheSnap.docs.length} clientes (SIN COSTO)`);
+          console.log(`OK Cache encontrado: ${clientesCacheSnap.docs.length} clientes (SIN COSTO)`);
 
           avisosCacheSnap.docs.forEach(doc => {
             avisosMapRef.current[doc.id] = doc.data().aviso;
@@ -87,9 +95,6 @@ export function useClientes() {
           processAndSetClientes();
           setLoading(false);
 
-          if (!localStorage.getItem(LAST_SYNC_KEY)) {
-            localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
-          }
         }
       } catch (cacheErr) {
         console.log('No hay caché disponible, cargando desde servidor...');
@@ -155,16 +160,32 @@ export function useClientes() {
 
       console.log(`Buscando registros nuevos desde ${lastSync.toLocaleString()}...`);
 
-      // Query solo documentos con fechaRegistro > ?ltima sincronizaci?n
-      const newClientsQuery = query(
+      // Query solo documentos con fechaRegistro > ultima sincronizacion
+      const newClientsTimestampQuery = query(
         collection(db, 'clientes'),
         where('fechaRegistro', '>', lastSyncTimestamp)
       );
 
-      const [newClientsSnap, avisosSnap] = await Promise.all([
-        getDocs(newClientsQuery),
+      const newClientsStringQuery = query(
+        collection(db, 'clientes'),
+        where('fechaRegistro', '>', lastSyncStr)
+      );
+
+      const [newClientsSnapTs, newClientsSnapStr, avisosSnap] = await Promise.all([
+        getDocs(newClientsTimestampQuery),
+        getDocs(newClientsStringQuery),
         getDocsFromCache(collection(db, 'avisos')).catch(() => null)
       ]);
+
+      const newClientsMap = new Map();
+      newClientsSnapTs.docs.forEach(doc => {
+        newClientsMap.set(doc.id, doc);
+      });
+      newClientsSnapStr.docs.forEach(doc => {
+        newClientsMap.set(doc.id, doc);
+      });
+      const newClientsDocs = Array.from(newClientsMap.values());
+      const newClientsReadCount = newClientsSnapTs.docs.length + newClientsSnapStr.docs.length;
 
       // Actualizar avisos desde cache (sin costo)
       if (avisosSnap) {
@@ -174,18 +195,18 @@ export function useClientes() {
         });
       }
 
-      if (newClientsSnap.docs.length === 0) {
+      if (newClientsDocs.length === 0) {
         if (avisosSnap) {
-          console.log(`✓ Sin registros nuevos (Avisos desde cache: ${avisosSnap.docs.length})`);
+          console.log(`OK Sin registros nuevos (Avisos desde cache: ${avisosSnap.docs.length})`);
         } else {
-          console.log('✓ Sin registros nuevos (Avisos sin cache)');
+          console.log('OK Sin registros nuevos (Avisos sin cache)');
         }
         processAndSetClientes();
       } else {
-        console.log(`✓ ${newClientsSnap.docs.length} registros nuevos encontrados`);
-        console.log(`  (Costo: ${newClientsSnap.docs.length} lecturas de clientes)`);
+        console.log(`OK ${newClientsDocs.length} registros nuevos encontrados`);
+        console.log(`  (Costo: ${newClientsReadCount} lecturas de clientes)`);
 
-        newClientsSnap.docs.forEach(doc => {
+        newClientsDocs.forEach(doc => {
           clientesMapRef.current.set(doc.id, {
             id: doc.id,
             ...doc.data()
