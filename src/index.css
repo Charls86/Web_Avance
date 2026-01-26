@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   margin: 0;
   padding: 0;
@@ -41,4 +43,20 @@ body {
 .leaflet-top,
 .leaflet-bottom {
   z-index: 1 !important;
+}
+
+/* Custom marker styles */
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-dot:hover {
+  width: 16px !important;
+  height: 16px !important;
+  background-color: rgba(21, 96, 130, 0.85) !important;
+  border-width: 1px !important;
+  box-shadow: 0 2px 8px rgba(21, 96, 130, 0.5) !important;
+  transform: translate(-3px, -3px);
+  z-index: 1000 !important;
 }

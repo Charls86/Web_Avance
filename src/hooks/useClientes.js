@@ -17,17 +17,19 @@ export function useClientes() {
     try {
       setLoading(true);
 
-      // Cargar clientes y avisos en paralelo
+      console.log('Consultando Firestore (con persistencia inteligente)...');
+
       const [clientesSnapshot, avisosSnapshot] = await Promise.all([
         getDocs(collection(db, 'clientes')),
         getDocs(collection(db, 'avisos'))
       ]);
 
+      console.log(`Fuente de datos: ${clientesSnapshot.metadata.fromCache ? 'CACHÉ LOCAL (Sin costo)' : 'SERVIDOR (Con costo/Deltas)'}`);
+
       // Crear mapa de avisos para búsqueda rápida
       const avisosMap = {};
       avisosSnapshot.docs.forEach(doc => {
         const data = doc.data();
-        // El ID del documento es el numeroCliente normalizado
         avisosMap[doc.id] = data.aviso;
       });
 
@@ -78,6 +80,10 @@ export function useClientes() {
   };
 
   useEffect(() => {
+    // Limpiar caché manual antiguo si existe para evitar conflictos
+    localStorage.removeItem('clientes_cache');
+    localStorage.removeItem('clientes_cache_timestamp');
+
     fetchClientes();
   }, []);
 

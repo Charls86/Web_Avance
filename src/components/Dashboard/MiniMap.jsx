@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { MapPin } from 'lucide-react';
 
@@ -11,15 +11,22 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// Custom marker icon
-const customIcon = new L.Icon({
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+// Custom marker icon - small circle
+const customIcon = L.divIcon({
+  className: 'custom-marker',
+  html: `<div style="
+    width: 10px;
+    height: 10px;
+    background-color: rgba(21, 96, 130, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    transition: all 0.2s ease;
+    cursor: pointer;
+  " class="marker-dot"></div>`,
+  iconSize: [10, 10],
+  iconAnchor: [5, 5],
+  popupAnchor: [0, -5]
 });
 
 // Component to fit bounds to markers
@@ -86,23 +93,18 @@ export default function MiniMap({ clientes, onClienteClick, fullHeight }) {
               click: () => onClienteClick && onClienteClick(cliente)
             }}
           >
-            <Popup>
-              <div className="min-w-[150px]">
-                <p className="font-semibold text-gray-900">
+            <Tooltip direction="top" offset={[0, -8]} opacity={0.95}>
+              <div className="text-xs font-sans">
+                <p className="font-bold text-gray-900 leading-tight">
                   {cliente.nombre || 'Sin nombre'}
                 </p>
                 {cliente.numeroCliente && (
-                  <p className="text-sm text-gray-600">
-                    N° {cliente.numeroCliente}
-                  </p>
-                )}
-                {cliente.direccion && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    {cliente.direccion}
+                  <p className="text-gray-600 mt-0.5">
+                    N° Cliente: {cliente.numeroCliente.toString().replace(/^0+/, '')}
                   </p>
                 )}
               </div>
-            </Popup>
+            </Tooltip>
           </Marker>
         ))}
 
