@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { collection, getDocs, query, where, Timestamp, getDocsFromCache } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 // Normalizar numeroCliente a 12 dígitos con ceros a la izquierda
@@ -8,86 +8,207 @@ const normalizarNumeroCliente = (numero) => {
   return numero.toString().replace(/\D/g, '').padStart(12, '0');
 };
 
+// Keys para guardar timestamps
+const LAST_SYNC_KEY = 'clientes_last_sync';
+const LAST_FULL_SYNC_KEY = 'clientes_last_full_sync';
+const FULL_SYNC_INTERVAL_HOURS = 24; // Sincronización completa cada 24 horas
+
 export function useClientes() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchClientes = async () => {
+  // Referencias para mantener datos en memoria
+  const clientesMapRef = useRef(new Map());
+  const avisosMapRef = useRef({});
+
+  // Procesar y ordenar clientes
+  const processAndSetClientes = () => {
+    const avisosMap = avisosMapRef.current;
+
+    const data = Array.from(clientesMapRef.current.values()).map(docData => {
+      let fechaRegistro = docData.fechaRegistro;
+
+      if (fechaRegistro?.toDate) {
+        fechaRegistro = fechaRegistro.toDate();
+      } else if (fechaRegistro && typeof fechaRegistro === 'string') {
+        fechaRegistro = new Date(fechaRegistro);
+      }
+
+      const numeroNormalizado = normalizarNumeroCliente(docData.numeroCliente);
+      const avisoActualizado = avisosMap[numeroNormalizado];
+
+      return {
+        ...docData,
+        fechaRegistro,
+        aviso: avisoActualizado || docData.aviso || ''
+      };
+    });
+
+    data.sort((a, b) => {
+      if (!a.fechaRegistro && !b.fechaRegistro) return 0;
+      if (!a.fechaRegistro) return 1;
+      if (!b.fechaRegistro) return -1;
+      return new Date(b.fechaRegistro) - new Date(a.fechaRegistro);
+    });
+
+    setClientes(data);
+  };
+
+  // Carga inicial: intenta caché primero, luego servidor
+  const initialLoad = async () => {
     try {
       setLoading(true);
+      console.log('Carga inicial...');
 
-      console.log('Consultando Firestore (con persistencia inteligente)...');
+      // Intentar cargar desde caché primero (SIN COSTO)
+      let loadedFromCache = false;
+      try {
+        const [clientesCacheSnap, avisosCacheSnap] = await Promise.all([
+          getDocsFromCache(collection(db, 'clientes')),
+          getDocsFromCache(collection(db, 'avisos'))
+        ]);
 
-      const [clientesSnapshot, avisosSnapshot] = await Promise.all([
-        getDocs(collection(db, 'clientes')),
-        getDocs(collection(db, 'avisos'))
-      ]);
+        if (clientesCacheSnap.docs.length > 0) {
+          loadedFromCache = true;
+          console.log(`✓ Caché encontrado: ${clientesCacheSnap.docs.length} clientes (SIN COSTO)`);
 
-      console.log(`Fuente de datos: ${clientesSnapshot.metadata.fromCache ? 'CACHÉ LOCAL (Sin costo)' : 'SERVIDOR (Con costo/Deltas)'}`);
+          avisosCacheSnap.docs.forEach(doc => {
+            avisosMapRef.current[doc.id] = doc.data().aviso;
+          });
 
-      // Crear mapa de avisos para búsqueda rápida
-      const avisosMap = {};
-      avisosSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        avisosMap[doc.id] = data.aviso;
-      });
+          clientesCacheSnap.docs.forEach(doc => {
+            clientesMapRef.current.set(doc.id, {
+              id: doc.id,
+              ...doc.data()
+            });
+          });
 
-      console.log('Avisos cargados:', Object.keys(avisosMap).length);
+          processAndSetClientes();
+          setLoading(false);
 
-      const data = clientesSnapshot.docs.map(doc => {
-        const docData = doc.data();
-        let fechaRegistro = docData.fechaRegistro;
-
-        // Handle different date formats
-        if (fechaRegistro?.toDate) {
-          fechaRegistro = fechaRegistro.toDate();
-        } else if (fechaRegistro && typeof fechaRegistro === 'string') {
-          fechaRegistro = new Date(fechaRegistro);
+          if (!localStorage.getItem(LAST_SYNC_KEY)) {
+            localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+          }
         }
+      } catch (cacheErr) {
+        console.log('No hay caché disponible, cargando desde servidor...');
+      }
 
-        // Buscar aviso actualizado en la colección avisos
-        const numeroNormalizado = normalizarNumeroCliente(docData.numeroCliente);
-        const avisoActualizado = avisosMap[numeroNormalizado];
+      // Si no hay caché, cargar todo desde servidor
+      if (!loadedFromCache) {
+        await fullSync();
+      }
 
-        return {
-          id: doc.id,
-          ...docData,
-          fechaRegistro,
-          // Prioridad: aviso de colección 'avisos' > aviso del registro
-          aviso: avisoActualizado || docData.aviso || ''
-        };
-      });
-
-      // Sort by fechaRegistro descending (nulls at the end)
-      data.sort((a, b) => {
-        if (!a.fechaRegistro && !b.fechaRegistro) return 0;
-        if (!a.fechaRegistro) return 1;
-        if (!b.fechaRegistro) return -1;
-        return new Date(b.fechaRegistro) - new Date(a.fechaRegistro);
-      });
-
-      console.log('Total clientes cargados:', data.length);
-
-      setClientes(data);
-      setError(null);
     } catch (err) {
-      console.error('Error fetching clientes:', err);
+      console.error('Error en carga inicial:', err);
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    // Limpiar caché manual antiguo si existe para evitar conflictos
-    localStorage.removeItem('clientes_cache');
-    localStorage.removeItem('clientes_cache_timestamp');
+  // Sincronización completa (primera vez)
+  const fullSync = async () => {
+    console.log('Sincronización completa desde servidor...');
 
-    fetchClientes();
+    const [clientesSnap, avisosSnap] = await Promise.all([
+      getDocs(collection(db, 'clientes')),
+      getDocs(collection(db, 'avisos'))
+    ]);
+
+    console.log(`✓ Servidor: ${clientesSnap.docs.length} clientes, ${avisosSnap.docs.length} avisos`);
+    console.log(`  (Costo: ${clientesSnap.docs.length + avisosSnap.docs.length} lecturas)`);
+
+    avisosMapRef.current = {};
+    clientesMapRef.current.clear();
+
+    avisosSnap.docs.forEach(doc => {
+      avisosMapRef.current[doc.id] = doc.data().aviso;
+    });
+
+    clientesSnap.docs.forEach(doc => {
+      clientesMapRef.current.set(doc.id, {
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    processAndSetClientes();
+    setLoading(false);
+    setError(null);
+  };
+
+  // BOTÓN ACTUALIZAR: solo trae docs nuevos desde última sync
+  const refetch = async () => {
+    try {
+      const lastSyncStr = localStorage.getItem(LAST_SYNC_KEY);
+
+      if (!lastSyncStr) {
+        console.log('Sin timestamp previo, sincronización completa...');
+        await fullSync();
+        return;
+      }
+
+      const lastSync = new Date(lastSyncStr);
+      const lastSyncTimestamp = Timestamp.fromDate(lastSync);
+
+      console.log(`Buscando registros nuevos desde ${lastSync.toLocaleString()}...`);
+
+      // Query solo documentos con fechaRegistro > ?ltima sincronizaci?n
+      const newClientsQuery = query(
+        collection(db, 'clientes'),
+        where('fechaRegistro', '>', lastSyncTimestamp)
+      );
+
+      const [newClientsSnap, avisosSnap] = await Promise.all([
+        getDocs(newClientsQuery),
+        getDocsFromCache(collection(db, 'avisos')).catch(() => null)
+      ]);
+
+      // Actualizar avisos desde cache (sin costo)
+      if (avisosSnap) {
+        avisosMapRef.current = {};
+        avisosSnap.docs.forEach(doc => {
+          avisosMapRef.current[doc.id] = doc.data().aviso;
+        });
+      }
+
+      if (newClientsSnap.docs.length === 0) {
+        if (avisosSnap) {
+          console.log(`✓ Sin registros nuevos (Avisos desde cache: ${avisosSnap.docs.length})`);
+        } else {
+          console.log('✓ Sin registros nuevos (Avisos sin cache)');
+        }
+        processAndSetClientes();
+      } else {
+        console.log(`✓ ${newClientsSnap.docs.length} registros nuevos encontrados`);
+        console.log(`  (Costo: ${newClientsSnap.docs.length} lecturas de clientes)`);
+
+        newClientsSnap.docs.forEach(doc => {
+          clientesMapRef.current.set(doc.id, {
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+
+        processAndSetClientes();
+      }
+
+      localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+      setError(null);
+
+    } catch (err) {
+      console.error('Error en actualización:', err);
+      setError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    initialLoad();
   }, []);
 
-  return { clientes, loading, error, refetch: fetchClientes };
+  return { clientes, loading, error, refetch };
 }
 
 export function useClienteById(id) {
@@ -112,7 +233,6 @@ export function useClienteById(id) {
         if (docSnap.exists()) {
           const data = docSnap.data();
 
-          // Buscar aviso actualizado en la colección avisos
           let avisoActualizado = null;
           if (data.numeroCliente) {
             const numeroNormalizado = normalizarNumeroCliente(data.numeroCliente);
@@ -127,7 +247,6 @@ export function useClienteById(id) {
             id: docSnap.id,
             ...data,
             fechaRegistro: data.fechaRegistro?.toDate?.() || data.fechaRegistro,
-            // Prioridad: aviso de colección 'avisos' > aviso del registro
             aviso: avisoActualizado || data.aviso || ''
           });
         } else {
