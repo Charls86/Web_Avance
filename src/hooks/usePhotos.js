@@ -6,19 +6,20 @@ export function usePhotos() {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  // Get all photos from a cliente
+  // Get all photos from a cliente (without duplicates)
   const getClientePhotos = (cliente) => {
-    const photos = [];
+    const photosSet = new Set();
 
     if (cliente?.fotoUrl) {
-      photos.push(cliente.fotoUrl);
+      photosSet.add(cliente.fotoUrl);
     }
 
     if (cliente?.fotoUrls && Array.isArray(cliente.fotoUrls)) {
-      photos.push(...cliente.fotoUrls);
+      cliente.fotoUrls.forEach(url => photosSet.add(url));
     }
 
-    return photos.slice(0, 3); // Max 3 photos
+    // Convert Set to Array and limit to 3
+    return Array.from(photosSet).slice(0, 3);
   };
 
   // Get all photos from all clientes
