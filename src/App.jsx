@@ -253,7 +253,7 @@ function App() {
                   <div className="flex items-center justify-between mb-2 flex-shrink-0">
                     <div className="flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-[#156082]" />
-                      <h3 className="text-base font-semibold text-gray-900">Mapa de Clientes</h3>
+                      <h3 className="text-base font-semibold text-gray-900">Mapa de Clientes Registrados</h3>
                     </div>
                     <span className="text-xs text-gray-500">
                       {clientes.filter(c => c.latitud && c.longitud).length} ubicaciones
