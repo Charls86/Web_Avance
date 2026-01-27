@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight, Folder, TrendingUp } from 'lucide-react';
 
 // Hooks
 import { useClientes } from './hooks/useClientes';
@@ -8,6 +8,7 @@ import { useAuth } from './hooks/useAuth';
 // Utils
 import { getDateStats } from './utils/dateHelpers';
 import { exportToExcel } from './utils/excelFormatter';
+import { ZONAL_TARGETS, isTargetClient } from './data/zonalData';
 
 // Components
 import StatsCards from './components/Dashboard/StatsCards';
@@ -35,6 +36,12 @@ function App() {
   const { clientes, loading, error, refetch } = useClientes();
   const [refreshing, setRefreshing] = useState(false);
   const stats = getDateStats(clientes);
+
+  // Calculate Zonal Progress
+  const totalZonalTargets = ZONAL_TARGETS.length;
+  const registeredZonal = clientes.filter(c => isTargetClient(c.numeroCliente)).length;
+  const zonalProgress = totalZonalTargets > 0 ? ((registeredZonal / totalZonalTargets) * 100).toFixed(1) : '0';
+  const zonalPending = totalZonalTargets - registeredZonal;
 
   const handleAvisosClick = () => {
     if (avisosAuthorized) {
@@ -214,7 +221,7 @@ function App() {
           <div className="h-full flex flex-col gap-4">
             {/* Stats */}
             <div className="flex-shrink-0">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {/* Stats Cards inline */}
                 <div className="bg-white rounded-lg border border-green-200 p-5 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
@@ -243,6 +250,29 @@ function App() {
                   </div>
                 </div>
 
+                <div className="bg-white rounded-lg border border-green-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-green-500" />
+                        <p className="text-sm font-medium text-gray-500">Levantamiento Zonal</p>
+                      </div>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <p className="text-3xl font-bold text-green-600">{zonalProgress}%</p>
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-green-50 rounded-full">
+                          <span className="text-xs font-medium text-green-600">{registeredZonal}</span>
+                          <span className="text-xs text-gray-400">/</span>
+                          <span className="text-xs text-gray-500">{totalZonalTargets}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                        <span className="text-[10px] text-gray-500">Pendientes: <span className="font-medium text-red-600">{zonalPending.toLocaleString()}</span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Refresh Button Card */}
                 <button
                   onClick={handleRefresh}
@@ -258,6 +288,7 @@ function App() {
                 </button>
               </div>
             </div>
+
 
             {/* Map and Sidebar - fills remaining space */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
@@ -317,6 +348,21 @@ function App() {
                         <p className="text-xs text-gray-500">Excel</p>
                       </div>
                     </div>
+
+                    <a
+                      href="https://grupocge-my.sharepoint.com/:f:/g/personal/cezunigaa_grupocge_cl/IgDZu-iprGeRTaFlUO4qkbohAZP04SEhU6h22KWn14pov2M?e=AAUCrc"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="col-span-2 flex flex-col items-center gap-2 p-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition-colors group cursor-pointer"
+                    >
+                      <div className="p-2 bg-indigo-100 rounded-lg group-hover:bg-indigo-200 transition-colors">
+                        <Folder className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-gray-900">Respaldo Formularios/Fotográfico</p>
+                        <p className="text-xs text-gray-500">Ir a SharePoint</p>
+                      </div>
+                    </a>
                   </div>
                 </div>
 
@@ -354,92 +400,101 @@ function App() {
               </div>
             </div>
           </div>
-        )}
+        )
+        }
 
-        {activeTab === 'clientes' && (
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Listado de Clientes
-                </h2>
-                <p className="text-gray-600">
-                  {clientes.length} clientes registrados
-                </p>
+        {
+          activeTab === 'clientes' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    Listado de Clientes
+                  </h2>
+                  <p className="text-gray-600">
+                    {clientes.length} clientes registrados
+                  </p>
+                </div>
+                <ExcelExport clientes={clientes} />
               </div>
-              <ExcelExport clientes={clientes} />
+
+              {/* Table */}
+              <ClientTable
+                clientes={clientes}
+                onViewCliente={(cliente) => setSelectedCliente(cliente)}
+              />
             </div>
+          )
+        }
 
-            {/* Table */}
-            <ClientTable
-              clientes={clientes}
-              onViewCliente={(cliente) => setSelectedCliente(cliente)}
-            />
-          </div>
-        )}
-
-        {activeTab === 'avisos' && (
-          <AvisosImport />
-        )}
-      </main>
+        {
+          activeTab === 'avisos' && (
+            <AvisosImport />
+          )
+        }
+      </main >
 
       {/* Client Detail Modal */}
-      {selectedCliente && (
-        <ClientDetail
-          cliente={selectedCliente}
-          onClose={() => setSelectedCliente(null)}
-        />
-      )}
+      {
+        selectedCliente && (
+          <ClientDetail
+            cliente={selectedCliente}
+            onClose={() => setSelectedCliente(null)}
+          />
+        )
+      }
 
       {/* Avisos Password Modal */}
-      {showAvisosAuth && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Bell className="h-6 w-6 text-amber-600" />
+      {
+        showAvisosAuth && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
+              <div className="text-center mb-4">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Bell className="h-6 w-6 text-amber-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Acceso a Avisos</h3>
+                <p className="text-sm text-gray-500 mt-1">Ingresa la contraseña para continuar</p>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">Acceso a Avisos</h3>
-              <p className="text-sm text-gray-500 mt-1">Ingresa la contraseña para continuar</p>
-            </div>
 
-            <input
-              type="password"
-              value={avisosPassword}
-              onChange={(e) => setAvisosPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAvisosAuth()}
-              placeholder="Contraseña"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
+              <input
+                type="password"
+                value={avisosPassword}
+                onChange={(e) => setAvisosPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAvisosAuth()}
+                placeholder="Contraseña"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
                        focus:ring-2 focus:ring-[#156082] focus:border-[#156082]
                        outline-none transition-all mb-3"
-              autoFocus
-            />
+                autoFocus
+              />
 
-            {avisosAuthError && (
-              <p className="text-sm text-red-500 mb-3 text-center">{avisosAuthError}</p>
-            )}
+              {avisosAuthError && (
+                <p className="text-sm text-red-500 mb-3 text-center">{avisosAuthError}</p>
+              )}
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowAvisosAuth(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAvisosAuth(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700
                          hover:bg-gray-50 transition-colors font-medium"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleAvisosAuth}
-                className="flex-1 px-4 py-2 bg-[#156082] text-white rounded-lg
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleAvisosAuth}
+                  className="flex-1 px-4 py-2 bg-[#156082] text-white rounded-lg
                          hover:bg-[#0d4a66] transition-colors font-medium"
-              >
-                Ingresar
-              </button>
+                >
+                  Ingresar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
 
