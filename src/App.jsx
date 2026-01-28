@@ -18,6 +18,7 @@ import ExcelExport from './components/DataTable/ExcelExport';
 import ClientDetail from './components/ClientSearch/ClientDetail';
 import AvisosImport from './components/Avisos/AvisosImport';
 import Login from './components/Auth/Login';
+import excelIcon from './assets/4202106excellogomicrosoftms-115582_115719.png';
 
 const AVISOS_PASSWORD = 'Ges_avi*';
 const AVISOS_AUTH_KEY = 'avisos_authorized';
@@ -356,9 +357,7 @@ function App() {
                       }}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors group cursor-pointer"
                     >
-                      <div className="p-2 bg-green-100 rounded-lg group-hover:bg-green-200 transition-colors">
-                        <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                      </div>
+                      <img src={excelIcon} alt="Excel" className="h-10 w-10 object-contain drop-shadow-sm" />
                       <div className="text-center">
                         <p className="text-sm font-medium text-gray-900">Exportar</p>
                         <p className="text-xs text-gray-500">Excel</p>

@@ -120,13 +120,6 @@ export default function ClientDetail({ cliente, onClose }) {
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => downloadPhoto(url)}
-                      className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                      title="Descargar foto"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
                   </div>
                 ))}
               </div>
