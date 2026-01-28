@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, query, where, Timestamp, getDocsFromCache } from 'firebase/firestore';
+import { collection, getDocs, query, where, Timestamp, getDocsFromCache, getDocsFromServer } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 // Normalizar numeroCliente a 12 dígitos con ceros a la izquierda
@@ -84,8 +84,7 @@ export function useClientes() {
         localStorage.setItem(SYNC_VERSION_KEY, SYNC_VERSION);
       }
 
-      // Intentar cargar desde caché primero (SIN COSTO)
-      let loadedFromCache = false;
+      // Intentar cargar desde caché primero para renderizado rápido (Stale-while-revalidate)
       try {
         const [clientesCacheSnap, avisosCacheSnap] = await Promise.all([
           getDocsFromCache(collection(db, 'clientes')),
@@ -93,8 +92,7 @@ export function useClientes() {
         ]);
 
         if (clientesCacheSnap.docs.length > 0) {
-          loadedFromCache = true;
-          console.log(`OK Cache encontrado: ${clientesCacheSnap.docs.length} clientes (SIN COSTO)`);
+          console.log(`Vista previa desde caché: ${clientesCacheSnap.docs.length} clientes`);
 
           avisosCacheSnap.docs.forEach(doc => {
             avisosMapRef.current[doc.id] = doc.data().aviso;
@@ -108,17 +106,14 @@ export function useClientes() {
           });
 
           processAndSetClientes();
-          setLoading(false);
-
         }
       } catch (cacheErr) {
-        console.log('No hay caché disponible, cargando desde servidor...');
+        console.log('Caché no disponible o vacío, continuando...');
       }
 
-      // Si no hay caché, cargar todo desde servidor
-      if (!loadedFromCache) {
-        await fullSync();
-      }
+      // SIEMPRE realizar sincronización completa con el servidor al inicio
+      // para asegurar consistencia total de datos.
+      await fullSync();
 
     } catch (err) {
       console.error('Error en carga inicial:', err);
@@ -132,8 +127,8 @@ export function useClientes() {
     console.log('Sincronización completa desde servidor...');
 
     const [clientesSnap, avisosSnap] = await Promise.all([
-      getDocs(collection(db, 'clientes')),
-      getDocs(collection(db, 'avisos'))
+      getDocsFromServer(collection(db, 'clientes')),
+      getDocsFromServer(collection(db, 'avisos'))
     ]);
 
     console.log(`✓ Servidor: ${clientesSnap.docs.length} clientes, ${avisosSnap.docs.length} avisos`);
