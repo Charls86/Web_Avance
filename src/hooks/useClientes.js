@@ -47,6 +47,7 @@ export function useClientes() {
       };
     });
 
+    // Ordenar por fecha descendente
     data.sort((a, b) => {
       if (!a.fechaRegistro && !b.fechaRegistro) return 0;
       if (!a.fechaRegistro) return 1;
@@ -54,7 +55,21 @@ export function useClientes() {
       return new Date(b.fechaRegistro) - new Date(a.fechaRegistro);
     });
 
-    setClientes(data);
+    // Filtrar duplicados por numeroCliente (manteniendo el más reciente)
+    const uniqueMap = new Map();
+    data.forEach(client => {
+      const key = normalizarNumeroCliente(client.numeroCliente);
+      if (key && !uniqueMap.has(key)) {
+        uniqueMap.set(key, client);
+      } else if (!key) {
+        // Si no tiene numeroCliente, usar ID para mantenerlo si es necesario
+        uniqueMap.set(client.id, client);
+      }
+    });
+
+    const uniqueData = Array.from(uniqueMap.values());
+    console.log(`Clientes procesados: ${data.length} -> Únicos: ${uniqueData.length}`);
+    setClientes(uniqueData);
   };
 
   // Carga inicial: intenta caché primero, luego servidor
@@ -155,39 +170,50 @@ export function useClientes() {
         return;
       }
 
+      console.log('Buscando actualizaciones...');
+
+      // Para asegurar integridad, traemos todo lo nuevo
+      // Usaremos la fecha de última sync menos un pequeño buffer (5 min) para evitar perder datos por latencia
       const lastSync = new Date(lastSyncStr);
+      lastSync.setMinutes(lastSync.getMinutes() - 5);
       const lastSyncTimestamp = Timestamp.fromDate(lastSync);
 
-      console.log(`Buscando registros nuevos desde ${lastSync.toLocaleString()}...`);
+      console.log(`Fecha corte búsqueda: ${lastSync.toLocaleString()}`);
 
-      // Query solo documentos con fechaRegistro > ultima sincronizacion
-      const newClientsTimestampQuery = query(
+      const newClientsQuery = query(
         collection(db, 'clientes'),
         where('fechaRegistro', '>', lastSyncTimestamp)
       );
 
+      // Restauramos soporte para fechas en formato String (ISO)
+      // Convertimos lastSync a string ISO para la comparación
+      const lastSyncISO = lastSync.toISOString();
       const newClientsStringQuery = query(
         collection(db, 'clientes'),
-        where('fechaRegistro', '>', lastSyncStr)
+        where('fechaRegistro', '>', lastSyncISO)
       );
 
-      const [newClientsSnapTs, newClientsSnapStr, avisosSnap] = await Promise.all([
-        getDocs(newClientsTimestampQuery),
+      const [newClientsSnap, newClientsStringSnap, avisosSnap] = await Promise.all([
+        getDocs(newClientsQuery),
         getDocs(newClientsStringQuery),
         getDocsFromCache(collection(db, 'avisos')).catch(() => null)
       ]);
 
       const newClientsMap = new Map();
-      newClientsSnapTs.docs.forEach(doc => {
-        newClientsMap.set(doc.id, doc);
-      });
-      newClientsSnapStr.docs.forEach(doc => {
-        newClientsMap.set(doc.id, doc);
-      });
-      const newClientsDocs = Array.from(newClientsMap.values());
-      const newClientsReadCount = newClientsSnapTs.docs.length + newClientsSnapStr.docs.length;
 
-      // Actualizar avisos desde cache (sin costo)
+      // Merge results from both queries
+      newClientsSnap.docs.forEach(doc => {
+        newClientsMap.set(doc.id, { id: doc.id, ...doc.data() });
+      });
+
+      newClientsStringSnap.docs.forEach(doc => {
+        if (!newClientsMap.has(doc.id)) {
+          newClientsMap.set(doc.id, { id: doc.id, ...doc.data() });
+        }
+      });
+
+      const newClientsDocs = Array.from(newClientsMap.values());
+
       if (avisosSnap) {
         avisosMapRef.current = {};
         avisosSnap.docs.forEach(doc => {
@@ -195,33 +221,31 @@ export function useClientes() {
         });
       }
 
-      if (newClientsDocs.length === 0) {
-        if (avisosSnap) {
-          console.log(`OK Sin registros nuevos (Avisos desde cache: ${avisosSnap.docs.length})`);
-        } else {
-          console.log('OK Sin registros nuevos (Avisos sin cache)');
-        }
-        processAndSetClientes();
-      } else {
+      if (newClientsDocs.length > 0) {
         console.log(`OK ${newClientsDocs.length} registros nuevos encontrados`);
-        console.log(`  (Costo: ${newClientsReadCount} lecturas de clientes)`);
 
-        newClientsDocs.forEach(doc => {
-          clientesMapRef.current.set(doc.id, {
-            id: doc.id,
-            ...doc.data()
-          });
+        newClientsDocs.forEach(data => {
+          clientesMapRef.current.set(data.id, data);
         });
 
         processAndSetClientes();
+        // Solo actualizamos la fecha de sync si encontramos algo, 
+        // o si queremos confirmar que "hasta aquí todo OK"
+        localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+      } else {
+        console.log('No se encontraron nuevos registros.');
+        // Forzamos "refrescar" la vista aunque no haya datos nuevos,
+        // por si hubo cambios en memoria o filtros
+        processAndSetClientes();
       }
 
-      localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
       setError(null);
 
     } catch (err) {
       console.error('Error en actualización:', err);
-      setError(err.message);
+      // Si falla la actualización parcial, intentar full sync como fallback
+      console.log('Intentando sincronización completa de emergencia...');
+      await fullSync();
     }
   };
 

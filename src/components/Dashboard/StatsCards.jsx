@@ -47,7 +47,7 @@ export default function StatsCards({ stats }) {
                   {card.title}
                 </p>
                 <p className={`text-3xl font-bold mt-1 ${card.color}`}>
-                  {card.value.toLocaleString()}
+                  {card.value.toLocaleString('es-CL')}
                 </p>
               </div>
               <div className={`p-3 rounded-full ${card.bgColor}`}>

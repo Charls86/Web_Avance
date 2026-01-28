@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight, Folder, TrendingUp } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight, Folder, TrendingUp, Calendar, CalendarDays, Database } from 'lucide-react';
 
 // Hooks
 import { useClientes } from './hooks/useClientes';
@@ -32,7 +32,7 @@ function App() {
     return localStorage.getItem(AVISOS_AUTH_KEY) === 'true';
   });
 
-  const { user, loading: authLoading, error: authError, login, logout } = useAuth();
+  const { user, loading: authLoading, error: authError, loginMicrosoft, loginEmail, logout } = useAuth();
   const { clientes, loading, error, refetch } = useClientes();
   const [refreshing, setRefreshing] = useState(false);
   const stats = getDateStats(clientes);
@@ -88,7 +88,14 @@ function App() {
 
   // Not authenticated - show login
   if (!user) {
-    return <Login onLogin={login} error={authError} loading={authLoading} />;
+    return (
+      <Login
+        onLoginMicrosoft={loginMicrosoft}
+        onLoginEmail={loginEmail}
+        error={authError}
+        loading={authLoading}
+      />
+    );
   }
 
   // Loading state
@@ -223,29 +230,38 @@ function App() {
             <div className="flex-shrink-0">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {/* Stats Cards inline */}
-                <div className="bg-white rounded-lg border border-green-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
+                <div className="bg-white rounded-lg border border-green-200 p-4 shadow-sm hover:shadow-md transition-shadow h-full flex flex-col justify-center">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-green-50 rounded-xl">
+                      <Calendar className="h-6 w-6 text-green-600" />
+                    </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Ingresos Hoy</p>
-                      <p className="text-3xl font-bold mt-1 text-green-600">{stats.today.toLocaleString()}</p>
+                      <p className="text-3xl font-bold text-green-600">{stats.today.toLocaleString('es-CL')}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-lg border border-blue-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
+                <div className="bg-white rounded-lg border border-blue-200 p-4 shadow-sm hover:shadow-md transition-shadow h-full flex flex-col justify-center">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 rounded-xl">
+                      <CalendarDays className="h-6 w-6 text-blue-600" />
+                    </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Últimos 7 días</p>
-                      <p className="text-3xl font-bold mt-1 text-blue-600">{stats.week.toLocaleString()}</p>
+                      <p className="text-3xl font-bold text-blue-600">{stats.week.toLocaleString('es-CL')}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-lg border border-[#156082]/20 p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
+                <div className="bg-white rounded-lg border border-[#156082]/20 p-4 shadow-sm hover:shadow-md transition-shadow h-full flex flex-col justify-center">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-[#156082]/10 rounded-xl">
+                      <Users className="h-6 w-6 text-[#156082]" />
+                    </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">Total Registros</p>
-                      <p className="text-3xl font-bold mt-1 text-[#156082]">{stats.total.toLocaleString()}</p>
+                      <p className="text-3xl font-bold text-[#156082]">{stats.total.toLocaleString('es-CL')}</p>
                     </div>
                   </div>
                 </div>
@@ -267,7 +283,7 @@ function App() {
                       </div>
                       <div className="flex items-center gap-1 mt-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                        <span className="text-[10px] text-gray-500">Pendientes: <span className="font-medium text-red-600">{zonalPending.toLocaleString()}</span></span>
+                        <span className="text-[10px] text-gray-500">Pendientes: <span className="font-medium text-red-600">{zonalPending.toLocaleString('es-CL')}</span></span>
                       </div>
                     </div>
                   </div>
@@ -353,15 +369,12 @@ function App() {
                       href="https://grupocge-my.sharepoint.com/:f:/g/personal/cezunigaa_grupocge_cl/IgDZu-iprGeRTaFlUO4qkbohAZP04SEhU6h22KWn14pov2M?e=AAUCrc"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="col-span-2 flex flex-col items-center gap-2 p-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition-colors group cursor-pointer"
+                      className="col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-all group cursor-pointer"
                     >
-                      <div className="p-2 bg-indigo-100 rounded-lg group-hover:bg-indigo-200 transition-colors">
-                        <Folder className="h-5 w-5 text-indigo-600" />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm font-medium text-gray-900">Respaldo Formularios/Fotográfico</p>
-                        <p className="text-xs text-gray-500">Ir a SharePoint</p>
-                      </div>
+                      <Folder className="h-4 w-4 text-gray-500 group-hover:text-[#156082] transition-colors" />
+                      <span className="text-xs font-medium text-gray-600 group-hover:text-[#156082] transition-colors">
+                        Respaldo SharePoint
+                      </span>
                     </a>
                   </div>
                 </div>
@@ -377,18 +390,25 @@ function App() {
                         key={cliente.id}
                         onClick={() => setSelectedCliente(cliente)}
                         className="flex items-center gap-2 p-2 rounded-lg
-                                   hover:bg-gray-50 cursor-pointer transition-colors"
+                                     hover:bg-gray-50 cursor-pointer transition-colors"
                       >
                         <div className="w-8 h-8 rounded-full bg-[#156082]/10
-                                        flex items-center justify-center flex-shrink-0">
+                                          flex items-center justify-center flex-shrink-0">
                           <span className="text-xs font-semibold text-[#156082]">
                             {(cliente.nombre || 'N')[0].toUpperCase()}
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {cliente.nombre || 'Sin nombre'}
-                          </p>
+                          <div className="flex justify-between items-start">
+                            <p className="text-sm font-medium text-gray-900 truncate pr-2">
+                              {cliente.nombre || 'Sin nombre'}
+                            </p>
+                            {cliente.fechaRegistro && (
+                              <span className="text-[10px] text-gray-400 font-mono whitespace-nowrap pt-0.5">
+                                {new Date(cliente.fechaRegistro).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500 truncate">
                             {cliente.direccion || cliente.numeroCliente || '-'}
                           </p>
