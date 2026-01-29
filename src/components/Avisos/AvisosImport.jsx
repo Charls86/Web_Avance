@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { ref as storageRef, deleteObject } from 'firebase/storage';
 import { db, storage } from '../../services/firebase';
-import { Upload, FileText, Check, AlertCircle, Trash2, Loader2, Database, Search, X, Image, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, Check, AlertCircle, Trash2, Loader2, Search, X, Image, AlertTriangle } from 'lucide-react';
 
 // Normalizar numeroCliente a 12 dígitos con ceros a la izquierda
 const normalizarNumeroCliente = (numero) => {
@@ -56,7 +56,7 @@ const getStoragePathFromUrl = (url) => {
 // Usuario autorizado para eliminar registros
 const ADMIN_DELETE_EMAIL = 'admin_cge@cge.cl';
 
-export default function AvisosImport({ onMigrate, migrating, userEmail }) {
+export default function AvisosImport({ userEmail }) {
   const [archivo, setArchivo] = useState(null);
   const [registros, setRegistros] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -601,44 +601,6 @@ export default function AvisosImport({ onMigrate, migrating, userEmail }) {
         </div>
       )}
 
-      {/* Migración a Realtime Database */}
-      {onMigrate && (
-        <div className="bg-amber-50 rounded-lg border border-amber-200 shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-amber-800 flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Migración a Realtime Database
-              </h3>
-              <p className="text-sm text-amber-700 mt-1">
-                Copia los datos de Firestore a Realtime Database para reducir costos de lectura.
-                Ejecutar solo una vez.
-              </p>
-            </div>
-            <button
-              onClick={onMigrate}
-              disabled={migrating}
-              className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 transition-all ${
-                migrating
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-amber-500 text-white hover:bg-amber-600'
-              }`}
-            >
-              {migrating ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Migrando...
-                </>
-              ) : (
-                <>
-                  <Database className="h-5 w-5" />
-                  Migrar DB
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

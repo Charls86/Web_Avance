@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight, Folder, TrendingUp, Calendar, CalendarDays } from 'lucide-react';
-import { migrateToRTDB } from './scripts/migrateToRTDB';
 
 // Hooks
 import { useClientes } from './hooks/useClientes';
@@ -31,31 +30,9 @@ function App() {
   const { user, loading: authLoading, error: authError, loginMicrosoft, loginEmail, logout } = useAuth();
   const { clientes, loading, error, refetch } = useClientes();
   const [refreshing, setRefreshing] = useState(false);
-  const [migrating, setMigrating] = useState(false);
-  const [migrateResult, setMigrateResult] = useState(null);
   const stats = getDateStats(clientes);
 
   // Función de migración a Realtime Database
-  const handleMigrate = async () => {
-    if (!confirm('¿Migrar datos de Firestore a Realtime Database?\n\nEsto copiará todos los clientes y avisos.')) {
-      return;
-    }
-    setMigrating(true);
-    setMigrateResult(null);
-    try {
-      const result = await migrateToRTDB();
-      setMigrateResult(result);
-      if (result.success) {
-        alert(`✓ Migración exitosa!\n${result.clientes} clientes, ${result.avisos} avisos`);
-      }
-    } catch (err) {
-      setMigrateResult({ success: false, error: err.message });
-      alert('Error en migración: ' + err.message);
-    } finally {
-      setMigrating(false);
-    }
-  };
-
   // Calculate Zonal Progress
   const totalZonalTargets = ZONAL_TARGETS.length;
   const registeredZonal = clientes.filter(c => isTargetClient(c.numeroCliente)).length;
@@ -448,8 +425,6 @@ function App() {
         {
           activeTab === 'avisos' && isAdmin && (
             <AvisosImport
-              onMigrate={handleMigrate}
-              migrating={migrating}
               userEmail={user?.email}
             />
           )
