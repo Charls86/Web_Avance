@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, query, where, Timestamp, getDocsFromCache, getDocsFromServer } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { ref, onValue, off } from 'firebase/database';
+import { rtdb } from '../services/firebase';
 
 // Normalizar numeroCliente a 12 dígitos con ceros a la izquierda
 const normalizarNumeroCliente = (numero) => {
@@ -8,42 +8,42 @@ const normalizarNumeroCliente = (numero) => {
   return numero.toString().replace(/\D/g, '').padStart(12, '0');
 };
 
-// Keys para guardar timestamps
-const LAST_SYNC_KEY = 'clientes_last_sync';
-const LAST_FULL_SYNC_KEY = 'clientes_last_full_sync';
-const FULL_SYNC_INTERVAL_HOURS = 24; // Sincronización completa cada 24 horas
-const SYNC_VERSION_KEY = 'clientes_sync_version';
-const SYNC_VERSION = '2';
-
 export function useClientes() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const avisosRef = useRef({});
 
-  // Referencias para mantener datos en memoria
-  const clientesMapRef = useRef(new Map());
-  const avisosMapRef = useRef({});
+  // Procesar datos de Realtime Database
+  const processData = (clientesData, avisosData) => {
+    // Guardar avisos en ref
+    avisosRef.current = avisosData || {};
 
-  // Procesar y ordenar clientes
-  const processAndSetClientes = () => {
-    const avisosMap = avisosMapRef.current;
+    if (!clientesData) {
+      setClientes([]);
+      setLoading(false);
+      return;
+    }
 
-    const data = Array.from(clientesMapRef.current.values()).map(docData => {
+    // Convertir objeto a array
+    const data = Object.entries(clientesData).map(([id, docData]) => {
       let fechaRegistro = docData.fechaRegistro;
 
-      if (fechaRegistro?.toDate) {
-        fechaRegistro = fechaRegistro.toDate();
-      } else if (fechaRegistro && typeof fechaRegistro === 'string') {
+      // Convertir fecha si es string
+      if (fechaRegistro && typeof fechaRegistro === 'string') {
+        fechaRegistro = new Date(fechaRegistro);
+      } else if (fechaRegistro && typeof fechaRegistro === 'number') {
         fechaRegistro = new Date(fechaRegistro);
       }
 
       const numeroNormalizado = normalizarNumeroCliente(docData.numeroCliente);
-      const avisoActualizado = avisosMap[numeroNormalizado];
+      const avisoActualizado = avisosRef.current[numeroNormalizado];
 
       return {
+        id,
         ...docData,
         fechaRegistro,
-        aviso: avisoActualizado || docData.aviso || ''
+        aviso: avisoActualizado?.aviso || docData.aviso || ''
       };
     });
 
@@ -62,191 +62,74 @@ export function useClientes() {
       if (key && !uniqueMap.has(key)) {
         uniqueMap.set(key, client);
       } else if (!key) {
-        // Si no tiene numeroCliente, usar ID para mantenerlo si es necesario
         uniqueMap.set(client.id, client);
       }
     });
 
     const uniqueData = Array.from(uniqueMap.values());
-    console.log(`Clientes procesados: ${data.length} -> Únicos: ${uniqueData.length}`);
+    console.log(`[RTDB] Clientes: ${data.length} -> Únicos: ${uniqueData.length} (sin costo por lectura)`);
     setClientes(uniqueData);
-  };
-
-  // Carga inicial: intenta caché primero, luego servidor
-  const initialLoad = async () => {
-    try {
-      setLoading(true);
-      console.log('Carga inicial...');
-
-      const syncVersion = localStorage.getItem(SYNC_VERSION_KEY);
-      if (syncVersion !== SYNC_VERSION) {
-        localStorage.removeItem(LAST_SYNC_KEY);
-        localStorage.setItem(SYNC_VERSION_KEY, SYNC_VERSION);
-      }
-
-      // Intentar cargar desde caché primero para renderizado rápido (Stale-while-revalidate)
-      try {
-        const [clientesCacheSnap, avisosCacheSnap] = await Promise.all([
-          getDocsFromCache(collection(db, 'clientes')),
-          getDocsFromCache(collection(db, 'avisos'))
-        ]);
-
-        if (clientesCacheSnap.docs.length > 0) {
-          console.log(`Vista previa desde caché: ${clientesCacheSnap.docs.length} clientes`);
-
-          avisosCacheSnap.docs.forEach(doc => {
-            avisosMapRef.current[doc.id] = doc.data().aviso;
-          });
-
-          clientesCacheSnap.docs.forEach(doc => {
-            clientesMapRef.current.set(doc.id, {
-              id: doc.id,
-              ...doc.data()
-            });
-          });
-
-          processAndSetClientes();
-        }
-      } catch (cacheErr) {
-        console.log('Caché no disponible o vacío, continuando...');
-      }
-
-      // SIEMPRE realizar sincronización completa con el servidor al inicio
-      // para asegurar consistencia total de datos.
-      await fullSync();
-
-    } catch (err) {
-      console.error('Error en carga inicial:', err);
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  // Sincronización completa (primera vez)
-  const fullSync = async () => {
-    console.log('Sincronización completa desde servidor...');
-
-    const [clientesSnap, avisosSnap] = await Promise.all([
-      getDocsFromServer(collection(db, 'clientes')),
-      getDocsFromServer(collection(db, 'avisos'))
-    ]);
-
-    console.log(`✓ Servidor: ${clientesSnap.docs.length} clientes, ${avisosSnap.docs.length} avisos`);
-    console.log(`  (Costo: ${clientesSnap.docs.length + avisosSnap.docs.length} lecturas)`);
-
-    avisosMapRef.current = {};
-    clientesMapRef.current.clear();
-
-    avisosSnap.docs.forEach(doc => {
-      avisosMapRef.current[doc.id] = doc.data().aviso;
-    });
-
-    clientesSnap.docs.forEach(doc => {
-      clientesMapRef.current.set(doc.id, {
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-
-    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
-    processAndSetClientes();
     setLoading(false);
     setError(null);
   };
 
-  // BOTÓN ACTUALIZAR: solo trae docs nuevos desde última sync
-  const refetch = async () => {
-    try {
-      const lastSyncStr = localStorage.getItem(LAST_SYNC_KEY);
-
-      if (!lastSyncStr) {
-        console.log('Sin timestamp previo, sincronización completa...');
-        await fullSync();
-        return;
-      }
-
-      console.log('Buscando actualizaciones...');
-
-      // Para asegurar integridad, traemos todo lo nuevo
-      // Usaremos la fecha de última sync menos un pequeño buffer (5 min) para evitar perder datos por latencia
-      const lastSync = new Date(lastSyncStr);
-      lastSync.setMinutes(lastSync.getMinutes() - 5);
-      const lastSyncTimestamp = Timestamp.fromDate(lastSync);
-
-      console.log(`Fecha corte búsqueda: ${lastSync.toLocaleString()}`);
-
-      const newClientsQuery = query(
-        collection(db, 'clientes'),
-        where('fechaRegistro', '>', lastSyncTimestamp)
-      );
-
-      // Restauramos soporte para fechas en formato String (ISO)
-      // Convertimos lastSync a string ISO para la comparación
-      const lastSyncISO = lastSync.toISOString();
-      const newClientsStringQuery = query(
-        collection(db, 'clientes'),
-        where('fechaRegistro', '>', lastSyncISO)
-      );
-
-      const [newClientsSnap, newClientsStringSnap, avisosSnap] = await Promise.all([
-        getDocs(newClientsQuery),
-        getDocs(newClientsStringQuery),
-        getDocsFromCache(collection(db, 'avisos')).catch(() => null)
-      ]);
-
-      const newClientsMap = new Map();
-
-      // Merge results from both queries
-      newClientsSnap.docs.forEach(doc => {
-        newClientsMap.set(doc.id, { id: doc.id, ...doc.data() });
-      });
-
-      newClientsStringSnap.docs.forEach(doc => {
-        if (!newClientsMap.has(doc.id)) {
-          newClientsMap.set(doc.id, { id: doc.id, ...doc.data() });
-        }
-      });
-
-      const newClientsDocs = Array.from(newClientsMap.values());
-
-      if (avisosSnap) {
-        avisosMapRef.current = {};
-        avisosSnap.docs.forEach(doc => {
-          avisosMapRef.current[doc.id] = doc.data().aviso;
-        });
-      }
-
-      if (newClientsDocs.length > 0) {
-        console.log(`OK ${newClientsDocs.length} registros nuevos encontrados`);
-
-        newClientsDocs.forEach(data => {
-          clientesMapRef.current.set(data.id, data);
-        });
-
-        processAndSetClientes();
-        // Solo actualizamos la fecha de sync si encontramos algo, 
-        // o si queremos confirmar que "hasta aquí todo OK"
-        localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
-      } else {
-        console.log('No se encontraron nuevos registros.');
-        // Forzamos "refrescar" la vista aunque no haya datos nuevos,
-        // por si hubo cambios en memoria o filtros
-        processAndSetClientes();
-      }
-
-      setError(null);
-
-    } catch (err) {
-      console.error('Error en actualización:', err);
-      // Si falla la actualización parcial, intentar full sync como fallback
-      console.log('Intentando sincronización completa de emergencia...');
-      await fullSync();
-    }
-  };
-
   useEffect(() => {
-    initialLoad();
+    console.log('[RTDB] Iniciando listeners en tiempo real...');
+    setLoading(true);
+
+    const clientesDbRef = ref(rtdb, 'clientes');
+    const avisosDbRef = ref(rtdb, 'avisos');
+
+    let clientesData = null;
+    let avisosData = null;
+    let clientesLoaded = false;
+    let avisosLoaded = false;
+
+    // Listener para clientes - se actualiza automáticamente
+    const clientesUnsubscribe = onValue(clientesDbRef, (snapshot) => {
+      clientesData = snapshot.val();
+      clientesLoaded = true;
+      console.log(`[RTDB] Clientes recibidos: ${clientesData ? Object.keys(clientesData).length : 0}`);
+
+      if (avisosLoaded) {
+        processData(clientesData, avisosData);
+      }
+    }, (err) => {
+      console.error('[RTDB] Error en clientes:', err);
+      setError(err.message);
+      setLoading(false);
+    });
+
+    // Listener para avisos
+    const avisosUnsubscribe = onValue(avisosDbRef, (snapshot) => {
+      avisosData = snapshot.val();
+      avisosLoaded = true;
+      console.log(`[RTDB] Avisos recibidos: ${avisosData ? Object.keys(avisosData).length : 0}`);
+
+      if (clientesLoaded) {
+        processData(clientesData, avisosData);
+      }
+    }, (err) => {
+      console.error('[RTDB] Error en avisos:', err);
+      // No es crítico si avisos falla
+      avisosLoaded = true;
+      if (clientesLoaded) {
+        processData(clientesData, {});
+      }
+    });
+
+    // Cleanup: desuscribirse cuando el componente se desmonta
+    return () => {
+      console.log('[RTDB] Limpiando listeners...');
+      off(clientesDbRef);
+      off(avisosDbRef);
+    };
   }, []);
+
+  // refetch ahora es innecesario (datos en tiempo real), pero mantenemos la interfaz
+  const refetch = () => {
+    console.log('[RTDB] Los datos se actualizan automáticamente en tiempo real');
+  };
 
   return { clientes, loading, error, refetch };
 }
@@ -263,45 +146,55 @@ export function useClienteById(id) {
       return;
     }
 
-    const fetchCliente = async () => {
-      try {
-        setLoading(true);
-        const { doc, getDoc } = await import('firebase/firestore');
-        const docRef = doc(db, 'clientes', id);
-        const docSnap = await getDoc(docRef);
+    console.log(`[RTDB] Cargando cliente: ${id}`);
+    setLoading(true);
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+    const clienteRef = ref(rtdb, `clientes/${id}`);
 
-          let avisoActualizado = null;
-          if (data.numeroCliente) {
-            const numeroNormalizado = normalizarNumeroCliente(data.numeroCliente);
-            const avisoRef = doc(db, 'avisos', numeroNormalizado);
-            const avisoSnap = await getDoc(avisoRef);
-            if (avisoSnap.exists()) {
-              avisoActualizado = avisoSnap.data().aviso;
+    const unsubscribe = onValue(clienteRef, async (snapshot) => {
+      const data = snapshot.val();
+
+      if (data) {
+        let avisoActualizado = null;
+
+        // Buscar aviso si tiene numeroCliente
+        if (data.numeroCliente) {
+          const numeroNormalizado = normalizarNumeroCliente(data.numeroCliente);
+          const avisoDbRef = ref(rtdb, `avisos/${numeroNormalizado}`);
+
+          onValue(avisoDbRef, (avisoSnap) => {
+            const avisoData = avisoSnap.val();
+            if (avisoData) {
+              avisoActualizado = avisoData.aviso;
             }
-          }
-
-          setCliente({
-            id: docSnap.id,
-            ...data,
-            fechaRegistro: data.fechaRegistro?.toDate?.() || data.fechaRegistro,
-            aviso: avisoActualizado || data.aviso || ''
-          });
-        } else {
-          setCliente(null);
+          }, { onlyOnce: true });
         }
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching cliente:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    fetchCliente();
+        let fechaRegistro = data.fechaRegistro;
+        if (fechaRegistro && typeof fechaRegistro === 'string') {
+          fechaRegistro = new Date(fechaRegistro);
+        } else if (fechaRegistro && typeof fechaRegistro === 'number') {
+          fechaRegistro = new Date(fechaRegistro);
+        }
+
+        setCliente({
+          id,
+          ...data,
+          fechaRegistro,
+          aviso: avisoActualizado || data.aviso || ''
+        });
+      } else {
+        setCliente(null);
+      }
+      setError(null);
+      setLoading(false);
+    }, (err) => {
+      console.error('[RTDB] Error fetching cliente:', err);
+      setError(err.message);
+      setLoading(false);
+    });
+
+    return () => off(clienteRef);
   }, [id]);
 
   return { cliente, loading, error };

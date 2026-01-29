@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight, Folder, TrendingUp, Calendar, CalendarDays, Database } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, LayoutDashboard, Users, MapPin, Bell, LogOut, User, FileSpreadsheet, ArrowRight, Folder, TrendingUp, Calendar, CalendarDays } from 'lucide-react';
+import { migrateToRTDB } from './scripts/migrateToRTDB';
 
 // Hooks
 import { useClientes } from './hooks/useClientes';
@@ -20,23 +21,40 @@ import AvisosImport from './components/Avisos/AvisosImport';
 import Login from './components/Auth/Login';
 import excelIcon from './assets/4202106excellogomicrosoftms-115582_115719.png';
 
-const AVISOS_PASSWORD = 'Ges_avi*';
-const AVISOS_AUTH_KEY = 'avisos_authorized';
+// Usuario administrador que puede acceder a Avisos
+const ADMIN_EMAIL = 'admin_cge@cge.cl';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedCliente, setSelectedCliente] = useState(null);
-  const [showAvisosAuth, setShowAvisosAuth] = useState(false);
-  const [avisosPassword, setAvisosPassword] = useState('');
-  const [avisosAuthError, setAvisosAuthError] = useState('');
-  const [avisosAuthorized, setAvisosAuthorized] = useState(() => {
-    return localStorage.getItem(AVISOS_AUTH_KEY) === 'true';
-  });
 
   const { user, loading: authLoading, error: authError, loginMicrosoft, loginEmail, logout } = useAuth();
   const { clientes, loading, error, refetch } = useClientes();
   const [refreshing, setRefreshing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateResult, setMigrateResult] = useState(null);
   const stats = getDateStats(clientes);
+
+  // Función de migración a Realtime Database
+  const handleMigrate = async () => {
+    if (!confirm('¿Migrar datos de Firestore a Realtime Database?\n\nEsto copiará todos los clientes y avisos.')) {
+      return;
+    }
+    setMigrating(true);
+    setMigrateResult(null);
+    try {
+      const result = await migrateToRTDB();
+      setMigrateResult(result);
+      if (result.success) {
+        alert(`✓ Migración exitosa!\n${result.clientes} clientes, ${result.avisos} avisos`);
+      }
+    } catch (err) {
+      setMigrateResult({ success: false, error: err.message });
+      alert('Error en migración: ' + err.message);
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   // Calculate Zonal Progress
   const totalZonalTargets = ZONAL_TARGETS.length;
@@ -44,35 +62,13 @@ function App() {
   const zonalProgress = totalZonalTargets > 0 ? ((registeredZonal / totalZonalTargets) * 100).toFixed(1) : '0';
   const zonalPending = totalZonalTargets - registeredZonal;
 
-  const handleAvisosClick = () => {
-    if (avisosAuthorized) {
-      setActiveTab('avisos');
-    } else {
-      setShowAvisosAuth(true);
-      setAvisosPassword('');
-      setAvisosAuthError('');
-    }
-  };
+  // Verificar si el usuario es admin
+  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  const handleAvisosAuth = () => {
-    if (avisosPassword === AVISOS_PASSWORD) {
-      localStorage.setItem(AVISOS_AUTH_KEY, 'true');
-      setAvisosAuthorized(true);
-      setShowAvisosAuth(false);
-      setActiveTab('avisos');
-    } else {
-      setAvisosAuthError('Contraseña incorrecta');
-    }
-  };
-
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     if (refreshing) return;
     setRefreshing(true);
-    try {
-      await refetch();
-    } finally {
-      setRefreshing(false);
-    }
+    setTimeout(() => setRefreshing(false), 800);
   };
 
   // Auth loading state
@@ -180,8 +176,9 @@ function App() {
                   <Users className="h-4 w-4" />
                   Clientes
                 </button>
+                {isAdmin && (
                 <button
-                  onClick={handleAvisosClick}
+                  onClick={() => setActiveTab('avisos')}
                   className={`
                     flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all text-sm
                     ${activeTab === 'avisos'
@@ -193,6 +190,7 @@ function App() {
                   <Bell className="h-4 w-4" />
                   Avisos
                 </button>
+                )}
               </div>
 
               {/* User info & Logout */}
@@ -448,8 +446,12 @@ function App() {
         }
 
         {
-          activeTab === 'avisos' && (
-            <AvisosImport />
+          activeTab === 'avisos' && isAdmin && (
+            <AvisosImport
+              onMigrate={handleMigrate}
+              migrating={migrating}
+              userEmail={user?.email}
+            />
           )
         }
       </main >
@@ -464,55 +466,6 @@ function App() {
         )
       }
 
-      {/* Avisos Password Modal */}
-      {
-        showAvisosAuth && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
-              <div className="text-center mb-4">
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Bell className="h-6 w-6 text-amber-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Acceso a Avisos</h3>
-                <p className="text-sm text-gray-500 mt-1">Ingresa la contraseña para continuar</p>
-              </div>
-
-              <input
-                type="password"
-                value={avisosPassword}
-                onChange={(e) => setAvisosPassword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAvisosAuth()}
-                placeholder="Contraseña"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
-                       focus:ring-2 focus:ring-[#156082] focus:border-[#156082]
-                       outline-none transition-all mb-3"
-                autoFocus
-              />
-
-              {avisosAuthError && (
-                <p className="text-sm text-red-500 mb-3 text-center">{avisosAuthError}</p>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowAvisosAuth(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700
-                         hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleAvisosAuth}
-                  className="flex-1 px-4 py-2 bg-[#156082] text-white rounded-lg
-                         hover:bg-[#0d4a66] transition-colors font-medium"
-                >
-                  Ingresar
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
     </div >
   );
 }
