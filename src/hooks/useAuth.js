@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, signInWithPopup, OAuthProvider, signOut, signInWithEmailAndPassword } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, OAuthProvider, signOut, signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
 export function useAuth() {
@@ -8,10 +8,34 @@ export function useAuth() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    console.log("useAuth: Inicializando observador de autenticación");
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log("onAuthStateChanged:", user ? "Usuario logueado" : "Sin usuario");
       setUser(user);
       setLoading(false);
     });
+
+    // Verificar resultado de redirección al cargar
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log("Login exitoso tras redirección:", result.user);
+          // El usuario se actualizará vía onAuthStateChanged
+        } else {
+          console.log("getRedirectResult: No hay resultado de redirección (null)");
+        }
+      })
+      .catch((error) => {
+        console.error("Error tras redirección:", error);
+        if (error.code === 'auth/admin-restricted-operation') {
+          setError('⚠️ Acceso denegado: Esta aplicación requiere permisos de administrador en Azure AD. Contacta a TI.');
+        } else if (error.code === 'auth/account-exists-with-different-credential') {
+          setError('La cuenta ya existe con otro proveedor.');
+        } else {
+          setError('Error de autenticación: ' + error.message);
+        }
+        setLoading(false);
+      });
 
     return () => unsubscribe();
   }, []);
@@ -20,6 +44,11 @@ export function useAuth() {
     try {
       setError(null);
       setLoading(true);
+      console.log("Iniciando login con Microsoft (Redirect)...");
+
+      // Establecer persistencia local explícitamente
+      await setPersistence(auth, browserLocalPersistence);
+      console.log("Persistencia establecida a LOCAL");
 
       const provider = new OAuthProvider('microsoft.com');
       const customParams = {
@@ -32,16 +61,11 @@ export function useAuth() {
 
       provider.setCustomParameters(customParams);
 
-      await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
+      // La página se recargará, no necesitamos esperar nada más aquí
     } catch (err) {
-      console.error('Error de login:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Inicio de sesión cancelado');
-      } else {
-        setError('Error al iniciar sesión con Microsoft. Verifica tu configuración.');
-      }
-      throw err;
-    } finally {
+      console.error('Error iniciando login:', err);
+      setError('No se pudo iniciar la redirección de login: ' + err.message);
       setLoading(false);
     }
   };
